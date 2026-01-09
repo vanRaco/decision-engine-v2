@@ -114,6 +114,7 @@ export default function VehicleDetailPage() {
   const [selectedChannel, setSelectedChannel] = useState<string>("export")
   const [selectedDamage, setSelectedDamage] = useState<string | undefined>()
   const [selectedPrice, setSelectedPrice] = useState(() => vehicle.recommendedPrice)
+  const playbookName = selectedChannel === "export" ? "Export Routing Playbook" : "Standard Pricing Playbook v2.3"
 
   const reconScenarios = useMemo(() => generateReconScenarios(vehicle), [vehicle])
   const channelComparisons = useMemo(() => generateChannelComparison(vehicle), [vehicle])
@@ -177,6 +178,7 @@ export default function VehicleDetailPage() {
             <RecommendationCard
               headline={`List at €${Math.round(selectedPrice).toLocaleString()} via ${channelComparisons.find((c) => c.channel === selectedChannel)?.channelLabel || "Export"}`}
               description={`Based on market analysis, this vehicle has strong demand in ${selectedChannel === "export" ? "Netherlands" : "domestic"} markets. Recommended smart repair for +€300 net uplift.`}
+              playbook={playbookName}
               impacts={[
                 {
                   label: "Net Proceeds",

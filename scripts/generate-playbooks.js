@@ -1,0 +1,567 @@
+const fs = require("fs")
+const path = require("path")
+
+const playbooks = [
+  {
+    id: "standard-pricing-v2-3",
+    name: "Standard Pricing Playbook v2.3",
+    status: "active",
+    owner: "HQ Pricing",
+    summary: "Baseline pricing and channel sequence for core ICE inventory in EU markets.",
+    narrative:
+      "Use this playbook for high-volume ICE models during their first 30 days. It balances margin protection with consistent velocity by sequencing ROFR, fixed price, then auction while enforcing tight price floors.",
+    scope: {
+      brands: ["BMW", "Mercedes", "Audi", "Volkswagen"],
+      segments: ["C Segment", "D Segment"],
+      fuelTypes: ["ICE Diesel", "ICE Petrol"],
+      ageBandDays: { min: 0, max: 30 },
+      countries: ["DE", "FR", "NL", "BE"],
+      lifecyclePhases: ["Ready to List", "Listed"],
+      channels: ["Dealer ROFR", "Fixed Price", "Auction"],
+    },
+    triggers: [
+      { id: "t1", type: "lifecycle", label: "Vehicle enters Ready to List" },
+      { id: "t2", type: "threshold", label: "14 days listed with low engagement" },
+    ],
+    conditions: [
+      { id: "c1", field: "Scorecard", operator: ">=", value: "60", description: "Healthy demand signal" },
+      { id: "c2", field: "Views per day", operator: "<", value: "6", description: "Weak early interest" },
+      { id: "c3", field: "Compression Index", operator: "<", value: "1.2", description: "Stable pacing window" },
+    ],
+    actions: [
+      { id: "a1", type: "pricing", description: "List in ROFR at 101-105% of guide" },
+      { id: "a2", type: "pricing", description: "After 14 days drop 2%, cap at 94% of guide" },
+      { id: "a3", type: "channel", description: "Move to auction at day 28 if engagement stays low" },
+    ],
+    guardrails: [
+      { id: "g1", description: "Never discount below RV floor of 94%" },
+      { id: "g2", description: "Max 2% price move per step" },
+      { id: "g3", description: "Auction only after ROFR window expires" },
+    ],
+    kpis: [
+      { id: "k1", label: "RPI", target: "95%", current: "94.2%", trend: "up" },
+      { id: "k2", label: "Days to Sell", target: "28d", current: "31d", trend: "down" },
+      { id: "k3", label: "Adherence", target: "85%", current: "88%", trend: "up" },
+    ],
+    adherence: {
+      last30Days: 88,
+      firedCount: 420,
+      followRate: 86,
+      overrideRate: 14,
+      outcomeRpiImpact: 1.2,
+      outcomeDaysImpact: -3.1,
+    },
+    assignments: [
+      { country: "DE", status: "assigned", variant: "DE Core" },
+      { country: "FR", status: "assigned" },
+      { country: "NL", status: "assigned" },
+      { country: "BE", status: "override", variant: "BE Dealer Bias", note: "ROFR window extended to 48h" },
+    ],
+    overrideReasons: [
+      { reason: "Volume pressure", count: 38, outcome: "worse" },
+      { reason: "Local market knowledge", count: 24, outcome: "neutral" },
+      { reason: "Strategic buyer", count: 11, outcome: "better" },
+    ],
+    versions: [
+      { version: "v2.3", status: "current", date: "2025-02-12", summary: "Tightened price floor and reduced first step to 2%" },
+      { version: "v2.2", status: "previous", date: "2024-11-05", summary: "Added export fallback for low-liquidity trims" },
+    ],
+    persona: {
+      director: "Monitor adherence and ROI across core markets. Approve any deviation from the EU baseline.",
+      aom: "Coach NSCs with low adherence and identify markets needing price-step tweaks.",
+      analyst: "Tune elasticity and confirm the 2% step still protects RPI for each brand family.",
+      rm: "See the playbook label on recommendations and override only with a logged reason.",
+    },
+  },
+  {
+    id: "export-routing",
+    name: "Export Routing Playbook",
+    status: "active",
+    owner: "HQ Strategy",
+    summary: "Route export-eligible vehicles to higher-demand markets when uplift clears thresholds.",
+    narrative:
+      "Use this playbook when domestic demand softens but cross-border arbitrage is strong. It prioritizes net uplift after logistics and applies guardrails to protect RV and timing.",
+    scope: {
+      brands: ["Volkswagen", "Peugeot", "Renault", "Ford"],
+      segments: ["Compact", "Compact SUV"],
+      fuelTypes: ["PHEV", "BEV"],
+      ageBandDays: { min: 30, max: 90 },
+      countries: ["ES", "PT", "IT"],
+      lifecyclePhases: ["Listed"],
+      channels: ["Export"],
+    },
+    triggers: [
+      { id: "t1", type: "threshold", label: "Export uplift exceeds 8%" },
+      { id: "t2", type: "threshold", label: "Domestic views drop below 4/day" },
+    ],
+    conditions: [
+      { id: "c1", field: "Logistics days", operator: "<=", value: "12", description: "Transit window acceptable" },
+      { id: "c2", field: "Net uplift", operator: ">=", value: "€1,000", description: "Uplift covers fees" },
+      { id: "c3", field: "Compression Index", operator: ">", value: "1.1", description: "Domestic pacing risk" },
+    ],
+    actions: [
+      { id: "a1", type: "channel", description: "Route to NL or DE export marketplace" },
+      { id: "a2", type: "pricing", description: "Set export price band at 102-106% of guide" },
+      { id: "a3", type: "tactic", description: "Mark as export candidate for RM bulk action" },
+    ],
+    guardrails: [
+      { id: "g1", description: "Do not export if local buyer commitment exists" },
+      { id: "g2", description: "Minimum margin 94% of RV" },
+      { id: "g3", description: "Logistics cost ceiling €1,200" },
+    ],
+    kpis: [
+      { id: "k1", label: "Net Uplift", target: "+€1.2k", current: "+€1.05k", trend: "down" },
+      { id: "k2", label: "Days to Sell", target: "32d", current: "29d", trend: "up" },
+      { id: "k3", label: "Adherence", target: "80%", current: "76%", trend: "down" },
+    ],
+    adherence: {
+      last30Days: 76,
+      firedCount: 188,
+      followRate: 73,
+      overrideRate: 27,
+      outcomeRpiImpact: 2.4,
+      outcomeDaysImpact: -4.8,
+    },
+    assignments: [
+      { country: "ES", status: "assigned" },
+      { country: "PT", status: "assigned" },
+      { country: "IT", status: "override", variant: "IT Logistics Cap", note: "Cap logistics at 10 days" },
+      { country: "FR", status: "opt-out", note: "Local demand remains strong" },
+    ],
+    overrideReasons: [
+      { reason: "Complex logistics", count: 19, outcome: "worse" },
+      { reason: "Local buyer commitment", count: 12, outcome: "neutral" },
+      { reason: "Tax exposure", count: 7, outcome: "worse" },
+    ],
+    versions: [
+      { version: "v1.4", status: "current", date: "2025-01-20", summary: "Adjusted uplift threshold to 8%" },
+      { version: "v1.3", status: "previous", date: "2024-10-14", summary: "Added logistics SLA guardrail" },
+    ],
+    persona: {
+      director: "Track arbitrage captured and ensure export remains within RV protection bounds.",
+      aom: "Review override reasons from ES/PT and flag logistics pain points.",
+      analyst: "Calibrate uplift threshold and transport cost assumptions per market.",
+      rm: "Accept export recommendations when guardrails are green; log exceptions.",
+    },
+  },
+  {
+    id: "offer-evaluation",
+    name: "Offer Evaluation Playbook",
+    status: "active",
+    owner: "Pricing Ops",
+    summary: "Standardized approach for accepting, countering, or rejecting offers.",
+    narrative:
+      "This playbook ensures consistent offer responses based on market value, buyer quality, and days-in-stock. It protects margin while keeping high-quality buyers engaged.",
+    scope: {
+      brands: ["All"],
+      segments: ["All"],
+      fuelTypes: ["All"],
+      ageBandDays: { min: 0, max: 120 },
+      countries: ["DE", "FR", "NL", "BE", "ES", "IT", "PT"],
+      lifecyclePhases: ["Offer"],
+      channels: ["Make Offer", "Fixed Price"],
+    },
+    triggers: [{ id: "t1", type: "lifecycle", label: "New offer received" }],
+    conditions: [
+      { id: "c1", field: "Offer vs Market", operator: ">=", value: "97%", description: "Strong offer" },
+      { id: "c2", field: "Buyer quality", operator: ">=", value: "85/100", description: "Reliable buyer" },
+    ],
+    actions: [
+      { id: "a1", type: "tactic", description: "Accept offers >=97% of market value" },
+      { id: "a2", type: "tactic", description: "Counter at 99% when buyer quality is high" },
+      { id: "a3", type: "tactic", description: "Reject when offer <93% and days in stock <20" },
+    ],
+    guardrails: [
+      { id: "g1", description: "Never accept below reserve price" },
+      { id: "g2", description: "Counter only once within 24 hours" },
+    ],
+    kpis: [
+      { id: "k1", label: "Acceptance Rate", target: "62%", current: "65%", trend: "up" },
+      { id: "k2", label: "RPI Impact", target: "+0.5%", current: "+0.8%", trend: "up" },
+      { id: "k3", label: "Time to Close", target: "5d", current: "4d", trend: "down" },
+    ],
+    adherence: {
+      last30Days: 92,
+      firedCount: 610,
+      followRate: 89,
+      overrideRate: 11,
+      outcomeRpiImpact: 0.8,
+      outcomeDaysImpact: -1.5,
+    },
+    assignments: [
+      { country: "DE", status: "assigned" },
+      { country: "FR", status: "assigned" },
+      { country: "NL", status: "assigned" },
+      { country: "BE", status: "assigned" },
+      { country: "ES", status: "assigned" },
+      { country: "IT", status: "assigned" },
+      { country: "PT", status: "assigned" },
+    ],
+    overrideReasons: [
+      { reason: "Strategic buyer", count: 21, outcome: "better" },
+      { reason: "Condition variance", count: 14, outcome: "neutral" },
+      { reason: "Urgent volume", count: 9, outcome: "worse" },
+    ],
+    versions: [
+      { version: "v3.1", status: "current", date: "2025-02-03", summary: "Raised acceptance threshold to 97%" },
+      { version: "v3.0", status: "previous", date: "2024-09-22", summary: "Added buyer quality scoring" },
+    ],
+    persona: {
+      director: "Ensure offer policy is consistent across markets and aligned to RPI targets.",
+      aom: "Use override trends to coach RMs on counter discipline.",
+      analyst: "Validate buyer quality scoring and update acceptance thresholds if needed.",
+      rm: "Review offers with clear accept/counter guidance; record override reasons.",
+    },
+  },
+  {
+    id: "rofr-escalation",
+    name: "ROFR Escalation Playbook",
+    status: "active",
+    owner: "Dealer Network",
+    summary: "Escalate ROFR decisions when response windows are at risk.",
+    narrative:
+      "This playbook protects velocity by escalating ROFR decisions before the window expires. It ensures inventory moves to auction or fixed price quickly when dealer interest is weak.",
+    scope: {
+      brands: ["BMW", "Mercedes", "Audi"],
+      segments: ["Premium Sedan", "Premium SUV"],
+      fuelTypes: ["ICE Diesel", "ICE Petrol", "PHEV"],
+      ageBandDays: { min: 10, max: 45 },
+      countries: ["DE", "NL", "BE"],
+      lifecyclePhases: ["Listed"],
+      channels: ["Dealer ROFR"],
+    },
+    triggers: [{ id: "t1", type: "threshold", label: "ROFR window < 6 hours remaining" }],
+    conditions: [
+      { id: "c1", field: "Dealer views", operator: "<", value: "5", description: "Low dealer activity" },
+      { id: "c2", field: "Offer count", operator: "=", value: "0", description: "No offers received" },
+    ],
+    actions: [
+      { id: "a1", type: "channel", description: "Escalate to auction if no response in 4 hours" },
+      { id: "a2", type: "notification", description: "Notify RM and AOM on escalation" },
+    ],
+    guardrails: [
+      { id: "g1", description: "Maintain reserve price floor" },
+      { id: "g2", description: "Skip escalation for strategic dealer commitments" },
+    ],
+    kpis: [
+      { id: "k1", label: "ROFR Compliance", target: "95%", current: "92%", trend: "down" },
+      { id: "k2", label: "Days to Sell", target: "26d", current: "27d", trend: "flat" },
+      { id: "k3", label: "Auction Recovery", target: "+0.8%", current: "+0.6%", trend: "down" },
+    ],
+    adherence: {
+      last30Days: 84,
+      firedCount: 140,
+      followRate: 81,
+      overrideRate: 19,
+      outcomeRpiImpact: 0.6,
+      outcomeDaysImpact: -2.2,
+    },
+    assignments: [
+      { country: "DE", status: "assigned" },
+      { country: "NL", status: "assigned" },
+      { country: "BE", status: "override", variant: "BE Extended ROFR", note: "Extend window to 36h" },
+    ],
+    overrideReasons: [
+      { reason: "Strategic dealer", count: 16, outcome: "neutral" },
+      { reason: "Pending negotiation", count: 9, outcome: "worse" },
+    ],
+    versions: [
+      { version: "v1.6", status: "current", date: "2024-12-09", summary: "Added escalation notifications" },
+      { version: "v1.5", status: "previous", date: "2024-08-01", summary: "Aligned escalation timing to 6h" },
+    ],
+    persona: {
+      director: "Ensure dealer network performance remains healthy while protecting speed.",
+      aom: "Review escalations and mediate if dealer commitments are being missed.",
+      analyst: "Monitor ROFR conversion rates and adjust escalation timing if needed.",
+      rm: "Act on escalations quickly to avoid delays in the sales cycle.",
+    },
+  },
+  {
+    id: "data-quality",
+    name: "Data Quality Playbook",
+    status: "active",
+    owner: "Operations",
+    summary: "Resolve critical data conflicts before listing or repricing.",
+    narrative:
+      "This playbook protects compliance and valuation accuracy by pausing decisions when data conflicts exist. It prioritizes resolution workflows for mileage, condition, and registration issues.",
+    scope: {
+      brands: ["All"],
+      segments: ["All"],
+      fuelTypes: ["All"],
+      ageBandDays: { min: 0, max: 120 },
+      countries: ["DE", "FR", "NL", "BE", "ES", "IT", "PT"],
+      lifecyclePhases: ["Intake", "Ready to List"],
+      channels: ["All"],
+    },
+    triggers: [{ id: "t1", type: "threshold", label: "Data conflict detected" }],
+    conditions: [
+      { id: "c1", field: "Data health", operator: "<", value: "70", description: "Low confidence dataset" },
+      { id: "c2", field: "Conflict type", operator: "in", value: "mileage, condition", description: "Critical fields" },
+    ],
+    actions: [
+      { id: "a1", type: "workflow", description: "Open conflict resolver and request source validation" },
+      { id: "a2", type: "workflow", description: "Block listing until conflict resolved" },
+    ],
+    guardrails: [
+      { id: "g1", description: "No pricing actions while conflicts are open" },
+      { id: "g2", description: "Escalate to Ops after 48 hours unresolved" },
+    ],
+    kpis: [
+      { id: "k1", label: "Conflict Resolution", target: "48h", current: "36h", trend: "up" },
+      { id: "k2", label: "Data Health", target: "90%", current: "88%", trend: "up" },
+      { id: "k3", label: "Listing Delay", target: "<2d", current: "1.2d", trend: "up" },
+    ],
+    adherence: {
+      last30Days: 94,
+      firedCount: 260,
+      followRate: 92,
+      overrideRate: 8,
+      outcomeRpiImpact: 0.4,
+      outcomeDaysImpact: 0.2,
+    },
+    assignments: [
+      { country: "DE", status: "assigned" },
+      { country: "FR", status: "assigned" },
+      { country: "NL", status: "assigned" },
+      { country: "BE", status: "assigned" },
+      { country: "ES", status: "assigned" },
+      { country: "IT", status: "assigned" },
+      { country: "PT", status: "assigned" },
+    ],
+    overrideReasons: [
+      { reason: "Urgent listing", count: 7, outcome: "worse" },
+      { reason: "Verified by local team", count: 5, outcome: "neutral" },
+    ],
+    versions: [
+      { version: "v2.0", status: "current", date: "2025-01-05", summary: "Added 48h escalation SLA" },
+      { version: "v1.8", status: "previous", date: "2024-07-17", summary: "Expanded conflict types" },
+    ],
+    persona: {
+      director: "Protect compliance by ensuring conflicts are resolved before go-live.",
+      aom: "Track unresolved conflicts and clear blockers with local teams.",
+      analyst: "Verify that data health improvements correlate with pricing accuracy.",
+      rm: "Resolve data conflicts promptly to avoid listing delays.",
+    },
+  },
+  {
+    id: "aging-stock",
+    name: "Aging Stock Playbook",
+    status: "active",
+    owner: "HQ Operations",
+    summary: "Intervene on vehicles approaching 60-90 day thresholds.",
+    narrative:
+      "This playbook reduces month-end compression by triggering early interventions for aging inventory. It focuses on targeted price steps and channel changes to maintain velocity.",
+    scope: {
+      brands: ["All"],
+      segments: ["All"],
+      fuelTypes: ["All"],
+      ageBandDays: { min: 60, max: 120 },
+      countries: ["DE", "FR", "NL", "BE", "ES", "IT"],
+      lifecyclePhases: ["Listed"],
+      channels: ["Fixed Price", "Auction", "Export"],
+    },
+    triggers: [
+      { id: "t1", type: "threshold", label: "Vehicle exceeds 60 days in stock" },
+      { id: "t2", type: "schedule", label: "Week 4 month-end pacing check" },
+    ],
+    conditions: [
+      { id: "c1", field: "Days in stock", operator: ">=", value: "60", description: "Aging risk" },
+      { id: "c2", field: "Liquidity band", operator: "in", value: "slow, stale", description: "Low liquidity" },
+    ],
+    actions: [
+      { id: "a1", type: "pricing", description: "Apply 3% reduction on 60+ day inventory" },
+      { id: "a2", type: "channel", description: "Switch to auction or export if demand remains weak" },
+      { id: "a3", type: "tactic", description: "Flag for RM bulk action in pacing view" },
+    ],
+    guardrails: [
+      { id: "g1", description: "Max discount 6% per month" },
+      { id: "g2", description: "Never under RV floor" },
+      { id: "g3", description: "Avoid export if local margin is higher" },
+    ],
+    kpis: [
+      { id: "k1", label: "Aging Share", target: "<18%", current: "20%", trend: "down" },
+      { id: "k2", label: "Days to Sell", target: "35d", current: "38d", trend: "down" },
+      { id: "k3", label: "RPI Impact", target: "-1.0%", current: "-1.2%", trend: "down" },
+    ],
+    adherence: {
+      last30Days: 82,
+      firedCount: 320,
+      followRate: 78,
+      overrideRate: 22,
+      outcomeRpiImpact: -1.2,
+      outcomeDaysImpact: -6.4,
+    },
+    assignments: [
+      { country: "DE", status: "assigned" },
+      { country: "FR", status: "assigned" },
+      { country: "NL", status: "assigned" },
+      { country: "BE", status: "assigned" },
+      { country: "ES", status: "override", variant: "ES Month-End Push", note: "Extra 1% discount" },
+      { country: "IT", status: "assigned" },
+    ],
+    overrideReasons: [
+      { reason: "Strategic hold", count: 27, outcome: "worse" },
+      { reason: "Condition variance", count: 18, outcome: "neutral" },
+      { reason: "Local buyer", count: 13, outcome: "better" },
+    ],
+    versions: [
+      { version: "v2.1", status: "current", date: "2024-12-01", summary: "Aligned aging threshold to 60 days" },
+      { version: "v2.0", status: "previous", date: "2024-07-30", summary: "Added month-end pacing trigger" },
+    ],
+    persona: {
+      director: "Reduce aging share without eroding margin beyond agreed thresholds.",
+      aom: "Review override patterns for local holds and coach consistent execution.",
+      analyst: "Track RPI drag and calibrate discount steps by segment.",
+      rm: "Use bulk actions to clear 60+ day inventory quickly.",
+    },
+  },
+  {
+    id: "cross-border-routing",
+    name: "Cross-border Routing Playbook",
+    status: "draft",
+    owner: "HQ Strategy",
+    summary: "Pilot routing of surplus PHEVs from ES to NL with strict uplift controls.",
+    narrative:
+      "This pilot playbook tests cross-border PHEV routing from Spain to the Netherlands when uplift exceeds logistics and compression thresholds. It is in draft while AOM feedback is collected.",
+    scope: {
+      brands: ["Volkswagen", "Peugeot", "Renault"],
+      segments: ["PHEV", "Compact SUV"],
+      fuelTypes: ["PHEV"],
+      ageBandDays: { min: 0, max: 90 },
+      countries: ["ES"],
+      lifecyclePhases: ["Listed"],
+      channels: ["Export"],
+    },
+    triggers: [
+      { id: "t1", type: "threshold", label: "Export uplift to NL > 8%" },
+      { id: "t2", type: "threshold", label: "Logistics lead time < 12 days" },
+    ],
+    conditions: [
+      { id: "c1", field: "Compression Index (ES)", operator: ">", value: "1.3", description: "Domestic pressure" },
+      { id: "c2", field: "Buyer commitment", operator: "=", value: "false", description: "No local hold" },
+    ],
+    actions: [
+      { id: "a1", type: "channel", description: "Route to NL export marketplace" },
+      { id: "a2", type: "pricing", description: "Expose NL target price band in recommendation" },
+      { id: "a3", type: "tactic", description: "Tag export candidate for RM review" },
+    ],
+    guardrails: [
+      { id: "g1", description: "Do not export if NL compression index > 1.2" },
+      { id: "g2", description: "Maintain minimum margin of 94% RV" },
+      { id: "g3", description: "Logistics cost ceiling €1,000" },
+    ],
+    kpis: [
+      { id: "k1", label: "Net Uplift", target: "+€1.5k", current: "+€1.2k", trend: "down" },
+      { id: "k2", label: "Adherence", target: "75%", current: "0%", trend: "flat" },
+      { id: "k3", label: "Days to Sell", target: "30d", current: "Pending", trend: "flat" },
+    ],
+    adherence: {
+      last30Days: 0,
+      firedCount: 0,
+      followRate: 0,
+      overrideRate: 0,
+      outcomeRpiImpact: 0,
+      outcomeDaysImpact: 0,
+    },
+    assignments: [
+      { country: "ES", status: "assigned", variant: "Pilot ES->NL", note: "Draft pending approval" },
+      { country: "NL", status: "assigned", note: "Receiving market" },
+    ],
+    overrideReasons: [
+      { reason: "Complex logistics", count: 0, outcome: "neutral" },
+      { reason: "Local buyer commitment", count: 0, outcome: "neutral" },
+    ],
+    versions: [
+      { version: "v0.9", status: "draft", date: "2025-03-01", summary: "Initial pilot configuration" },
+    ],
+    persona: {
+      director: "Approve pilot scope and monitor uplift vs logistics cost.",
+      aom: "Collect feedback from Spain RM and identify logistics blockers.",
+      analyst: "Simulate uplift thresholds and validate NL pricing band.",
+      rm: "Review export tags and override only with clear local buyer evidence.",
+    },
+  },
+  {
+    id: "market-volatility-response",
+    name: "Market Volatility Response Playbook",
+    status: "active",
+    owner: "Risk Council",
+    summary: "Rapid response to segment price drops or demand shocks.",
+    narrative:
+      "Activate this playbook when market signals indicate sudden volatility. It freezes aggressive pricing, flags exposure, and recommends tactical repricing only when guardrails are met.",
+    scope: {
+      brands: ["All"],
+      segments: ["BEV", "PHEV", "Diesel"],
+      fuelTypes: ["BEV", "PHEV", "ICE Diesel"],
+      ageBandDays: { min: 0, max: 120 },
+      countries: ["DE", "FR", "NL", "BE", "ES", "IT", "PT"],
+      lifecyclePhases: ["Listed"],
+      channels: ["Fixed Price", "Auction", "Export"],
+    },
+    triggers: [
+      { id: "t1", type: "threshold", label: "Segment price drop > 5% in 14 days" },
+      { id: "t2", type: "threshold", label: "Demand index < 0.7" },
+    ],
+    conditions: [
+      { id: "c1", field: "Exposure", operator: ">", value: "€250k", description: "Material risk exposure" },
+      { id: "c2", field: "Segment", operator: "in", value: "BEV, PHEV, Diesel", description: "High volatility segments" },
+    ],
+    actions: [
+      { id: "a1", type: "pricing", description: "Pause discretionary discounts for 7 days" },
+      { id: "a2", type: "workflow", description: "Flag affected cohorts for analyst review" },
+      { id: "a3", type: "simulation", description: "Run stress test scenarios for exposure" },
+    ],
+    guardrails: [
+      { id: "g1", description: "No pricing moves without analyst approval" },
+      { id: "g2", description: "Protect RV floor at 93%" },
+    ],
+    kpis: [
+      { id: "k1", label: "Exposure Reduced", target: "-15%", current: "-9%", trend: "down" },
+      { id: "k2", label: "RPI Volatility", target: "<2%", current: "2.4%", trend: "down" },
+      { id: "k3", label: "Time to Stabilize", target: "21d", current: "24d", trend: "down" },
+    ],
+    adherence: {
+      last30Days: 79,
+      firedCount: 95,
+      followRate: 74,
+      overrideRate: 26,
+      outcomeRpiImpact: -0.6,
+      outcomeDaysImpact: 2.1,
+    },
+    assignments: [
+      { country: "DE", status: "assigned" },
+      { country: "FR", status: "assigned" },
+      { country: "NL", status: "assigned" },
+      { country: "BE", status: "assigned" },
+      { country: "ES", status: "assigned" },
+      { country: "IT", status: "assigned" },
+      { country: "PT", status: "assigned" },
+    ],
+    overrideReasons: [
+      { reason: "Urgent volume", count: 14, outcome: "worse" },
+      { reason: "Local promo", count: 10, outcome: "neutral" },
+      { reason: "Strategic buyer", count: 6, outcome: "better" },
+    ],
+    versions: [
+      { version: "v1.2", status: "current", date: "2025-02-18", summary: "Added exposure threshold and pause window" },
+      { version: "v1.1", status: "previous", date: "2024-10-28", summary: "Expanded to diesel segments" },
+    ],
+    persona: {
+      director: "Activate volatility controls and monitor exposure across segments.",
+      aom: "Coordinate market messaging and ensure playbook is followed during shocks.",
+      analyst: "Run stress tests and propose calibrated repricing once stable.",
+      rm: "Follow pause guidance and escalate edge cases immediately.",
+    },
+  },
+]
+
+const payload = {
+  schemaVersion: 1,
+  playbooks,
+}
+
+const outputPath = path.resolve(__dirname, "../data/playbooks.json")
+fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+fs.writeFileSync(outputPath, JSON.stringify(payload, null, 2))
+
+console.log(`Playbooks data written to ${outputPath}`)

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -35,6 +36,7 @@ import {
   Info,
 } from "lucide-react"
 import { overrideReasons, generateOfferDetail, type Action, type Vehicle, countries } from "@/lib/mock-data"
+import { getPlaybookHref } from "@/lib/playbooks"
 
 interface ActionCardProps {
   action: Action
@@ -127,6 +129,8 @@ export function ActionCard({
   const typeConfig = actionTypeConfig[action.type]
   const priority = priorityConfig[action.priority]
   const Icon = typeConfig.icon
+  const playbookName = action.reasoning.playbook
+  const playbookHref = playbookName ? getPlaybookHref(playbookName) : null
 
   const offerDetail = useMemo(() => {
     if (action.type === "accept-offer") {
@@ -197,6 +201,18 @@ export function ActionCard({
             </div>
 
             <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{action.description}</p>
+
+            {playbookName && playbookHref && (
+              <Link
+                href={playbookHref}
+                className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground mb-3"
+              >
+                <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200">
+                  Playbook
+                </Badge>
+                <span>{playbookName}</span>
+              </Link>
+            )}
 
             {offerDetail && (
               <div className="mb-3 p-3 bg-white rounded-lg border space-y-3">

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -30,6 +31,7 @@ import {
 } from "lucide-react"
 import type { Action, Vehicle, ReasoningFactor } from "@/lib/mock-data"
 import { countries } from "@/lib/mock-data"
+import { getPlaybookHref } from "@/lib/playbooks"
 
 interface ActionDetailPanelProps {
   action: Action | null
@@ -99,6 +101,7 @@ export function ActionDetailPanel({
   if (!action || !vehicle) return null
 
   const { reasoning, marketContext, similarDecisions, alternativeActions } = action
+  const playbookHref = reasoning.playbook ? getPlaybookHref(reasoning.playbook) : null
 
   return (
     <Sheet open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -204,13 +207,13 @@ export function ActionDetailPanel({
               </div>
 
               {/* Playbook */}
-              {reasoning.playbook && (
-                <div className="flex items-center gap-2 text-sm">
+              {reasoning.playbook && playbookHref && (
+                <Link href={playbookHref} className="flex items-center gap-2 text-sm hover:text-foreground">
                   <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
                     Playbook
                   </Badge>
                   <span className="text-muted-foreground">{reasoning.playbook}</span>
-                </div>
+                </Link>
               )}
 
               {/* Factors */}

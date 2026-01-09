@@ -1,8 +1,10 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { ConfidenceBadge, type ConfidenceLevel } from "@/components/ui/confidence-badge"
 import {
   Dialog,
@@ -18,6 +20,7 @@ import { Label } from "@/components/ui/label"
 import { Check, X, Settings2, ChevronRight, TrendingUp, Clock, Info } from "lucide-react"
 import { overrideReasons } from "@/lib/mock-data"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { getPlaybookHref } from "@/lib/playbooks"
 
 interface RecommendationCardProps {
   headline: string
@@ -34,6 +37,7 @@ interface RecommendationCardProps {
   onCustomize?: () => void
   variant?: "default" | "compact" | "inline"
   className?: string
+  playbook?: string
 }
 
 export function RecommendationCard({
@@ -47,10 +51,12 @@ export function RecommendationCard({
   onCustomize,
   variant = "default",
   className,
+  playbook,
 }: RecommendationCardProps) {
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejectReason, setRejectReason] = useState("")
   const [rejectNotes, setRejectNotes] = useState("")
+  const playbookHref = playbook ? getPlaybookHref(playbook) : null
 
   const handleReject = () => {
     if (rejectReason) {
@@ -144,6 +150,16 @@ export function RecommendationCard({
               <ConfidenceBadge level={confidence} />
             </div>
             {description && <p className="text-sm text-muted-foreground">{description}</p>}
+            {playbook && playbookHref && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200">
+                  Playbook
+                </Badge>
+                <Link href={playbookHref} className="hover:text-foreground">
+                  {playbook}
+                </Link>
+              </div>
+            )}
           </div>
         </div>
 
